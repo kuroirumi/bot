@@ -8,7 +8,7 @@ from threading import Thread
 import os
 
 # ================= 1. CẤU HÌNH BÍ MẬT =================
-DISCORD_TOKEN = os.environ.get('MTUzMTk4NjQyMTkxNTcxNzY3Mw.GQSkGe.NaOoYmG0N36Utqe6AiyMC_VZTfJkEFsyBB2JjQ')
+DISCORD_TOKEN = os.environ.get('MTUzMTk4NjQyMTkxNTcxNzY3Mw.G9dqY0.Lxz3Rp7wESg6gD3e2uerekuJn518pUqG3Ps-1I')
 GEMINI_API_KEY = os.environ.get('AQ.Ab8RN6J_WloUFx97rBgVJr0VubUnyoQVr6sDHYZ_S5DTZ3uOPA')
 CHANNEL_THONG_BAO_ID = 1507652207829450812
 TEN_MODEL = "gemini-3.5-flash-lite" 
