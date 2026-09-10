@@ -1,0 +1,21 @@
+# Môi trường ảo Python
+.venv/
+venv/
+ENV/
+env/
+
+# Bytecode & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Khóa tiến trình & File tạm
+.bot_genai.lock
+*.tmp
+
+# Cấu hình chứa API Key / Token nhạy cảm
+.env
+
+# File test cục bộ (nếu không cần đưa lên server)
+test_system.py
+testcode.py
