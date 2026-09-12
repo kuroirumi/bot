@@ -36,9 +36,20 @@ def _load_env_file():
 
 _load_env_file()
 
+def _get_int_env(key: str, default: int = 0) -> int:
+    """Lấy biến môi trường dạng số nguyên một cách an toàn, tránh crash nếu chưa cấu hình."""
+    val = os.getenv(key)
+    if not val:
+        return default
+    try:
+        return int(val.strip())
+    except (ValueError, TypeError):
+        print(f"[Cảnh báo] Biến môi trường {key}='{val}' không phải số hợp lệ. Dùng mặc định: {default}")
+        return default
+
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-CHANNEL_THONG_BAO_ID = int(os.getenv("CHANNEL_THONG_BAO_ID"))
+CHANNEL_THONG_BAO_ID = _get_int_env("CHANNEL_THONG_BAO_ID", 0)
 
 # Danh sách model được sắp xếp ưu tiên từ nhanh mượt, ổn định nhất xuống các lựa chọn dự phòng
 MODEL_LIST = [
@@ -51,12 +62,47 @@ MODEL_LIST = [
 TEN_MODEL = MODEL_LIST[0]
 
 # === ID DISCORD CỦA PAPA VÀ MAMA ===
-ID_PAPA = int(os.getenv("ID_PAPA"))   # ID của (Kuro)
-ID_MAMA = int(os.getenv("ID_MAMA"))   # ID của (Ruki)
+ID_PAPA = _get_int_env("ID_PAPA", 0)   # ID của (Kuro)
+ID_MAMA = _get_int_env("ID_MAMA", 0)   # ID của (Ruki)
 # =====================================================
 
-# Khởi tạo client chính thức của Google GenAI
-client = genai.Client(api_key=GEMINI_API_KEY)
+# ================= 2. KHỞI CHẠY WEB SERVER NGAY LẬP TỨC (GIỮ PORT CHO RENDER) =================
+def _start_background_web_server():
+    """Khởi động web server ngay ở đầu chương trình để Render nhận diện port ngay tức khắc."""
+    if Flask is None:
+        print("[Web Server] Thư viện Flask chưa được cài đặt, bỏ qua web server.")
+        return
+
+    app = Flask("render_keep_alive")
+
+    @app.route("/")
+    @app.route("/health")
+    def home():
+        return f"Bot đang chạy mượt với model: {TEN_MODEL}!"
+
+    def run():
+        # Render tự cấp biến môi trường PORT (thường là 10000). Mặc định là 8080 nếu chạy local
+        port = int(os.environ.get("PORT", 8080))
+        print(f"[Web Server] Đang lắng nghe trên cổng {port} (0.0.0.0:{port})...")
+        app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
+    t = Thread(target=run, daemon=True)
+    t.start()
+
+_start_background_web_server()
+
+# Khởi tạo client chính thức của Google GenAI một cách an toàn
+client = None
+if GEMINI_API_KEY:
+    try:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+    except Exception as exc:
+        print(f"[Lỗi Khởi Tạo Gemini Client]: {exc}")
+else:
+    print("=" * 60)
+    print("[CẢNH BÁO] Chưa cấu hình 'GEMINI_API_KEY' trên Render.")
+    print("Vui lòng thêm GEMINI_API_KEY vào tab Environment trên Render để dùng tính năng AI!")
+    print("=" * 60)
 
 # Khóa đơn-instance để tránh khởi động 2 bot cùng lúc gây trả lời 2 lần
 BOT_LOCK_FILE = Path(__file__).resolve().parent / ".bot_genai.lock"
@@ -87,6 +133,9 @@ def _is_pid_running(pid: int) -> bool:
 
 
 def _acquire_single_instance_lock() -> bool:
+    # Trên Render, nền tảng container tự quản lý vòng đời tiến trình
+    if os.getenv("RENDER"):
+        return True
     try:
         with BOT_LOCK_FILE.open("x", encoding="utf-8") as lock_file:
             lock_file.write(str(os.getpid()))
@@ -592,6 +641,8 @@ async def _build_multimodal_prompt_parts(message: discord.Message, cau_hoi: str)
 
 
 async def goi_gemini_ai(cau_hoi, danh_xung, message):
+    if client is None:
+        return f"con chưa được cấu hình GEMINI_API_KEY trên server Render, {danh_xung} báo papa/mama thêm vào Environment giúp con nha!"
     quy_tac_he_thong = lay_quy_tac_he_thong(danh_xung)
     memory = _get_context_memory(message)
     guild = getattr(message, "guild", None)
@@ -769,22 +820,15 @@ async def on_message(message):
     
     await bot.process_commands(message)
 
-# ================= 4. WEB SERVER GIỮ MẠNG =================
-if Flask is not None:
-    app = Flask('')
-
-    @app.route('/')
-    def home():
-        return f"Bot đang chạy mượt với model: {TEN_MODEL}!"
-
-    def run():
-        port = int(os.environ.get("PORT", 8080))
-        app.run(host='0.0.0.0', port=port)
-
-    def keep_alive():
-        t = Thread(target=run)
-        t.start()
-
-    keep_alive()
-
-bot.run(DISCORD_TOKEN)
+# ================= 4. KHỞI CHẠY BOT DISCORD =================
+if not DISCORD_TOKEN:
+    print("=" * 60)
+    print("[LỖI NGUY HIỂM] THIẾU BIẾN MÔI TRƯỜNG 'DISCORD_TOKEN' TRÊN RENDER!")
+    print("-> Hãy vào Dashboard Render > Environment > Thêm DISCORD_TOKEN.")
+    print("-> Web server vẫn đang giữ cổng để Render không bị lỗi 'Timed out waiting for port'.")
+    print("=" * 60)
+    import time
+    while True:
+        time.sleep(3600)
+else:
+    bot.run(DISCORD_TOKEN)
